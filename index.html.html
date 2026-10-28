@@ -1,0 +1,863 @@
+<!DOCTYPE html>
+<html lang="ms">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Air Slice Ninja Academy - Tanda Baca BM Tahun 1</title>
+
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+
+    <!-- FontAwesome Icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+
+    <!-- Google Fonts: Luckiest Guy & Fredoka -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Fredoka:wght@400;600;700&family=Luckiest+Guy&display=swap" rel="stylesheet">
+
+    <!-- MediaPipe Libraries -->
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js" crossorigin="anonymous"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.js" crossorigin="anonymous"></script>
+
+    <style>
+        body {
+            font-family: 'Fredoka', sans-serif;
+            background-color: #0f172a;
+            color: #fff;
+            overflow: hidden;
+            touch-action: none;
+            user-select: none;
+        }
+
+        .font-ninja {
+            font-family: 'Luckiest Guy', cursive;
+            letter-spacing: 2px;
+        }
+
+        /* Glassmorphism card effect */
+        .glass-card {
+            background: rgba(15, 23, 42, 0.75);
+            backdrop-filter: blur(12px);
+            border: 2px solid rgba(255, 255, 255, 0.15);
+            box-shadow: 0 20px 40px rgba(0, 0, 0, 0.5);
+        }
+
+        /* Ninja Floating Bubbles (Answer Targets) */
+        .bubble-target {
+            position: absolute;
+            transform: translate(-50%, -50%);
+            border-radius: 9999px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            text-align: center;
+            font-weight: 700;
+            box-shadow: 0 10px 25px rgba(0,0,0,0.4), inset 0 4px 8px rgba(255,255,255,0.4);
+            transition: transform 0.1s ease;
+            cursor: pointer;
+            z-index: 20;
+        }
+
+        /* Custom Pulse Effect */
+        @keyframes pulse-glow {
+            0%, 100% { filter: drop-shadow(0 0 15px rgba(234, 179, 8, 0.8)); }
+            50% { filter: drop-shadow(0 0 30px rgba(234, 179, 8, 1)); }
+        }
+
+        .glow-gold {
+            animation: pulse-glow 2s infinite;
+        }
+
+        /* Mirror video view for natural interaction */
+        #webcam_video {
+            transform: scaleX(-1);
+        }
+
+        #game_canvas {
+            transform: scaleX(-1);
+        }
+    </style>
+</head>
+<body class="relative w-screen h-screen bg-slate-950 overflow-hidden flex flex-col items-center justify-center">
+
+    <!-- Container Utama Permainan -->
+    <div id="game_container" class="relative w-full h-full flex flex-col items-center justify-center overflow-hidden">
+        
+        <!-- Webcam Video (Hidden Element for Capture) -->
+        <video id="webcam_video" class="hidden" playsinline></video>
+
+        <!-- Canvas Utama (Webcam View + Hand Landmark Overlay + Blade Effects) -->
+        <canvas id="game_canvas" class="absolute inset-0 w-full h-full object-cover z-0"></canvas>
+
+        <!-- Dynamic Visual Targets Container (Floating Answers Overlay) -->
+        <div id="targets_layer" class="absolute inset-0 pointer-events-none z-10"></div>
+
+        <!-- Dynamic Particles Layer for Slash Effects -->
+        <canvas id="fx_canvas" class="absolute inset-0 w-full h-full pointer-events-none z-30"></canvas>
+
+        <!-- Top HUD (Heads-Up Display) -->
+        <div id="hud_layer" class="absolute top-0 left-0 w-full p-4 md:p-6 flex justify-between items-start z-40 pointer-events-none hidden">
+            <!-- Score & Streak -->
+            <div class="glass-card px-5 py-3 rounded-2xl flex items-center space-x-4 border-l-4 border-yellow-400">
+                <div class="bg-yellow-500/20 p-3 rounded-xl text-yellow-400">
+                    <i class="fa-solid fa-trophy text-2xl md:text-3xl"></i>
+                </div>
+                <div>
+                    <div class="text-xs uppercase tracking-wider text-slate-400 font-bold">Skor Ninja</div>
+                    <div id="score_val" class="text-2xl md:text-4xl font-ninja text-yellow-400">0</div>
+                </div>
+            </div>
+
+            <!-- Timer Middle Pill -->
+            <div class="glass-card px-6 py-3 rounded-full flex items-center space-x-3 border-t-2 border-cyan-400">
+                <i class="fa-solid fa-hourglass-half text-cyan-400 text-xl animate-spin"></i>
+                <span id="timer_val" class="text-2xl md:text-3xl font-ninja text-cyan-300">20s</span>
+            </div>
+
+            <!-- Lives (Hearts) -->
+            <div class="glass-card px-5 py-3 rounded-2xl flex items-center space-x-3 border-r-4 border-red-500">
+                <div>
+                    <div class="text-xs uppercase tracking-wider text-slate-400 font-bold text-right">Nyawa</div>
+                    <div id="lives_container" class="flex space-x-1.5 text-2xl text-red-500 mt-1">
+                        <i class="fa-solid fa-heart animate-bounce"></i>
+                        <i class="fa-solid fa-heart animate-bounce"></i>
+                        <i class="fa-solid fa-heart animate-bounce"></i>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Question Banner Overlay (Top Middle) -->
+        <div id="question_banner" class="absolute top-24 left-1/2 -translate-x-1/2 w-11/12 max-w-3xl glass-card rounded-3xl p-4 md:p-6 border-2 border-yellow-400/50 text-center z-40 pointer-events-none shadow-2xl hidden transition-all duration-300">
+            <div class="flex items-center justify-center space-x-2 mb-1">
+                <span id="question_num" class="bg-yellow-500 text-slate-950 font-black text-xs px-3 py-1 rounded-full uppercase">Soalan 1/10</span>
+                <span id="question_cat" class="bg-indigo-600 text-white font-bold text-xs px-3 py-1 rounded-full">Tanda Baca (Bahasa Melayu Tahun 1)</span>
+            </div>
+            <!-- Dynamic Emoji / Visual Cue -->
+            <div id="question_icon" class="text-4xl md:text-5xl my-2">❓</div>
+            <!-- Question Text -->
+            <h2 id="question_text" class="text-xl md:text-3xl font-bold text-white tracking-wide leading-tight">Apakah tanda baca yang betul bagi ayat ini?</h2>
+        </div>
+
+        <!-- SCREEN 1: START / MENU SCREEN -->
+        <div id="start_screen" class="absolute inset-0 z-50 flex flex-col items-center justify-center bg-slate-950/90 backdrop-blur-md p-6 text-center">
+            <div class="max-w-md w-full glass-card p-8 rounded-3xl border-2 border-yellow-400 flex flex-col items-center shadow-2xl">
+                <!-- Logo Ninja -->
+                <div class="w-24 h-24 bg-gradient-to-tr from-yellow-500 to-red-500 rounded-full flex items-center justify-center mb-4 shadow-lg shadow-yellow-500/30 glow-gold">
+                    <i class="fa-solid fa-user-ninja text-5xl text-slate-950"></i>
+                </div>
+                
+                <h1 class="font-ninja text-3xl md:text-4xl text-transparent bg-clip-text bg-gradient-to-r from-yellow-400 via-orange-400 to-red-500 mb-2">
+                    AIR SLICE NINJA
+                </h1>
+                <p class="text-slate-300 font-semibold mb-6 text-sm">Akademi Bahasa Melayu Tahun 1: Tanda Baca</p>
+
+                <!-- Instructions -->
+                <div class="bg-slate-900/80 rounded-2xl p-4 w-full text-left space-y-3 mb-6 text-xs md:text-sm text-slate-300 border border-slate-700">
+                    <div class="flex items-center space-x-3">
+                        <i class="fa-solid fa-hand-pointer text-yellow-400 text-lg w-6 text-center"></i>
+                        <span>Gunakan <b>Jari Telunjuk</b> di hadapan webcam untuk mengawal Pedang Ninja.</span>
+                    </div>
+                    <div class="flex items-center space-x-3">
+                        <i class="fa-solid fa-bolt text-red-400 text-lg w-6 text-center"></i>
+                        <span>Tebas (Slice) gelembung <b>Tanda Baca yang BETUL</b> sebelum masa tamat!</span>
+                    </div>
+                    <div class="flex items-center space-x-3">
+                        <i class="fa-solid fa-shield-halved text-green-400 text-lg w-6 text-center"></i>
+                        <span>Elakkan memilih tanda baca yang salah atau anda kehilangan nyawa.</span>
+                    </div>
+                </div>
+
+                <!-- Status Camera Indicator -->
+                <div id="camera_status" class="text-xs text-yellow-400 mb-4 flex items-center space-x-2">
+                    <i class="fa-solid fa-circle-notch animate-spin"></i>
+                    <span>Memuatkan Model Pengesanan Tangan MediaPipe...</span>
+                </div>
+
+                <!-- Start Button -->
+                <button id="btn_start" disabled class="w-full py-4 bg-gradient-to-r from-yellow-500 to-orange-500 hover:from-yellow-400 hover:to-orange-400 text-slate-950 font-ninja text-xl rounded-2xl shadow-lg shadow-yellow-500/30 transition-all duration-200 transform hover:scale-105 active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed">
+                    MULA PERMAINAN <i class="fa-solid fa-play ml-2"></i>
+                </button>
+            </div>
+        </div>
+
+        <!-- SCREEN 2: GAME OVER / RESULT SCREEN -->
+        <div id="gameover_screen" class="absolute inset-0 z-50 flex flex-col items-center justify-center bg-slate-950/90 backdrop-blur-md p-6 text-center hidden">
+            <div class="max-w-md w-full glass-card p-8 rounded-3xl border-2 border-red-500 flex flex-col items-center shadow-2xl">
+                <div id="result_icon" class="w-20 h-20 bg-red-500/20 text-red-500 rounded-full flex items-center justify-center mb-4 text-4xl border border-red-500">
+                    <i class="fa-solid fa-skull"></i>
+                </div>
+
+                <h2 id="result_title" class="font-ninja text-3xl text-red-500 mb-1">TAMAT PERMAINAN!</h2>
+                <p id="result_desc" class="text-slate-300 text-sm mb-6">Cuba lagi untuk jadi Pahlawan Ninja BM!</p>
+
+                <!-- Final Score Board -->
+                <div class="bg-slate-900/80 rounded-2xl p-5 w-full mb-6 border border-slate-700 space-y-3">
+                    <div class="flex justify-between items-center text-sm text-slate-400">
+                        <span>Jumlah Soalan Selesai:</span>
+                        <span id="final_completed" class="font-bold text-white">0/10</span>
+                    </div>
+                    <div class="flex justify-between items-center text-sm text-slate-400">
+                        <span>Ketepatan Jawapan:</span>
+                        <span id="final_accuracy" class="font-bold text-cyan-400">0%</span>
+                    </div>
+                    <hr class="border-slate-800">
+                    <div class="flex justify-between items-center text-lg font-bold text-white">
+                        <span>Skor Akhir:</span>
+                        <span id="final_score" class="font-ninja text-2xl text-yellow-400">0</span>
+                    </div>
+                </div>
+
+                <!-- Restart Button -->
+                <button id="btn_restart" class="w-full py-4 bg-gradient-to-r from-green-500 to-emerald-600 hover:from-green-400 hover:to-emerald-500 text-white font-ninja text-xl rounded-2xl shadow-lg shadow-green-500/30 transition-all duration-200 transform hover:scale-105 active:scale-95">
+                    MAIN SEMULA <i class="fa-solid fa-rotate-right ml-2"></i>
+                </button>
+            </div>
+        </div>
+
+        <!-- Notification Toast Box (For Correct/Wrong feedback) -->
+        <div id="feedback_toast" class="absolute bottom-10 left-1/2 -translate-x-1/2 z-50 glass-card px-8 py-4 rounded-2xl font-ninja text-2xl tracking-wide flex items-center space-x-3 transition-all duration-300 opacity-0 transform translate-y-8 pointer-events-none">
+            <i id="toast_icon" class="fa-solid fa-star text-yellow-400"></i>
+            <span id="toast_text" class="text-white">TEBASAN TEPAT!</span>
+        </div>
+
+    </div>
+
+    <!-- JAVASCRIPT GAME LOGIC & MEDIAPIPE INTEGRATION -->
+    <script>
+        /* ------------------------------------------------------------------
+           1. GAME BANK DATA (10 Soalan BM Tahun 1 - Tanda Baca)
+           ------------------------------------------------------------------ */
+        const QUESTIONS_BANK = [
+            {
+                num: "Soalan 1/10",
+                icon: "🐱",
+                question: "Saya ada seekor kucing comel___",
+                options: [". (Muktamat)", "? (Tanda Soal)", "! (Tanda Seru)"],
+                correct: 0
+            },
+            {
+                num: "Soalan 2/10",
+                icon: "🤔",
+                question: "Siapakah nama cikgu bahasa Melayu kamu___",
+                options: ["! (Tanda Seru)", "? (Tanda Soal)", ", (Koma)"],
+                correct: 1
+            },
+            {
+                num: "Soalan 3/10",
+                icon: "😲",
+                question: "Wah, cantiknya baju baharu kamu___",
+                options: [". (Muktamad)", "? (Tanda Soal)", "! (Tanda Seru)"],
+                correct: 2
+            },
+            {
+                num: "Soalan 4/10",
+                icon: "🍎",
+                question: "Ibu membeli epal___ pisang dan tembikai di pasar.",
+                options: [", (Koma)", "! (Tanda Seru)", "? (Tanda Soal)"],
+                correct: 0
+            },
+            {
+                num: "Soalan 5/10",
+                icon: "🏃‍♂️",
+                question: "Di manakah tempat kamu tinggal___",
+                options: [". (Muktamad)", "? (Tanda Soal)", ", (Koma)"],
+                correct: 1
+            },
+            {
+                num: "Soalan 6/10",
+                icon: "🔥",
+                question: "Awas, lantai itu sangat licin___",
+                options: [", (Koma)", "? (Tanda Soal)", "! (Tanda Seru)"],
+                correct: 2
+            },
+            {
+                num: "Soalan 7/10",
+                icon: "🏫",
+                question: "Murid-murid sedang belajar di dalam kelas___",
+                options: [". (Muktamad)", "! (Tanda Seru)", "? (Tanda Soal)"],
+                correct: 0
+            },
+            {
+                num: "Soalan 8/10",
+                icon: "✏️",
+                question: "Ali membawa pensel___ pembaris dan pemadam ke sekolah.",
+                options: ["? (Tanda Soal)", ", (Koma)", "! (Tanda Seru)"],
+                correct: 1
+            },
+            {
+                num: "Soalan 9/10",
+                icon: "🎉",
+                question: "Syabas, kamu mendapat markah tertinggi dalam ujian___",
+                options: [". (Muktamad)", "? (Tanda Soal)", "! (Tanda Seru)"],
+                correct: 2
+            },
+            {
+                num: "Soalan 10/10",
+                icon: "⚽",
+                question: "Bolehkah saya bermain bola sepak bersama kamu___",
+                options: ["? (Tanda Soal)", ". (Muktamad)", ", (Koma)"],
+                correct: 0
+            }
+        ];
+
+        /* ------------------------------------------------------------------
+           2. SOUND SYNTHESIZER (Web Audio API - Synthesizer tanpa URL luar)
+           ------------------------------------------------------------------ */
+        class SoundFX {
+            constructor() {
+                this.ctx = null;
+            }
+
+            init() {
+                if (!this.ctx) {
+                    this.ctx = new (window.AudioContext || window.webkitAudioContext)();
+                }
+            }
+
+            playSlash() {
+                if (!this.ctx) return;
+                const osc = this.ctx.createOscillator();
+                const gain = this.ctx.createGain();
+                
+                osc.type = 'sine';
+                osc.frequency.setValueAtTime(800, this.ctx.currentTime);
+                osc.frequency.exponentialRampToValueAtTime(80, this.ctx.currentTime + 0.15);
+
+                gain.gain.setValueAtTime(0.3, this.ctx.currentTime);
+                gain.gain.exponentialRampToValueAtTime(0.01, this.ctx.currentTime + 0.15);
+
+                osc.connect(gain);
+                gain.connect(this.ctx.destination);
+
+                osc.start();
+                osc.stop(this.ctx.currentTime + 0.15);
+            }
+
+            playCorrect() {
+                if (!this.ctx) return;
+                const now = this.ctx.currentTime;
+                
+                // Play 3-tone pleasant chord
+                [523.25, 659.25, 783.99].forEach((freq, idx) => {
+                    const osc = this.ctx.createOscillator();
+                    const gain = this.ctx.createGain();
+                    
+                    osc.type = 'triangle';
+                    osc.frequency.setValueAtTime(freq, now + (idx * 0.08));
+
+                    gain.gain.setValueAtTime(0.2, now + (idx * 0.08));
+                    gain.gain.exponentialRampToValueAtTime(0.001, now + (idx * 0.08) + 0.3);
+
+                    osc.connect(gain);
+                    gain.connect(this.ctx.destination);
+
+                    osc.start(now + (idx * 0.08));
+                    osc.stop(now + (idx * 0.08) + 0.3);
+                });
+            }
+
+            playWrong() {
+                if (!this.ctx) return;
+                const osc = this.ctx.createOscillator();
+                const gain = this.ctx.createGain();
+
+                osc.type = 'sawtooth';
+                osc.frequency.setValueAtTime(150, this.ctx.currentTime);
+                osc.frequency.linearRampToValueAtTime(60, this.ctx.currentTime + 0.25);
+
+                gain.gain.setValueAtTime(0.3, this.ctx.currentTime);
+                gain.gain.exponentialRampToValueAtTime(0.01, this.ctx.currentTime + 0.25);
+
+                osc.connect(gain);
+                gain.connect(this.ctx.destination);
+
+                osc.start();
+                osc.stop(this.ctx.currentTime + 0.25);
+            }
+        }
+
+        const sound = new SoundFX();
+
+        /* ------------------------------------------------------------------
+           3. GAME STATE & VARIABLES
+           ------------------------------------------------------------------ */
+        let currentQuestionIdx = 0;
+        let score = 0;
+        let lives = 3;
+        let timer = 20;
+        let timerInterval = null;
+        let isGameRunning = false;
+        let correctAttempts = 0;
+
+        // Target Bubbles Dynamic Motion State
+        let targetBubbles = [];
+        
+        // Blade Trail State (Hand Index Fingertip Trail)
+        let bladeTrail = [];
+        let fingerPos = { x: 0, y: 0, active: false };
+
+        // Particle FX Array
+        let particles = [];
+
+        /* ------------------------------------------------------------------
+           4. DOM ELEMENTS
+           ------------------------------------------------------------------ */
+        const videoElement = document.getElementById('webcam_video');
+        const gameCanvas = document.getElementById('game_canvas');
+        const gameCtx = gameCanvas.getContext('2d');
+
+        const fxCanvas = document.getElementById('fx_canvas');
+        const fxCtx = fxCanvas.getContext('2d');
+
+        const targetsLayer = document.getElementById('targets_layer');
+        const startScreen = document.getElementById('start_screen');
+        const gameoverScreen = document.getElementById('gameover_screen');
+        const hudLayer = document.getElementById('hud_layer');
+        const questionBanner = document.getElementById('question_banner');
+
+        const btnStart = document.getElementById('btn_start');
+        const btnRestart = document.getElementById('btn_restart');
+        const cameraStatus = document.getElementById('camera_status');
+
+        const scoreVal = document.getElementById('score_val');
+        const timerVal = document.getElementById('timer_val');
+        const livesContainer = document.getElementById('lives_container');
+
+        const questionNum = document.getElementById('question_num');
+        const questionIcon = document.getElementById('question_icon');
+        const questionText = document.getElementById('question_text');
+
+        const feedbackToast = document.getElementById('feedback_toast');
+        const toastIcon = document.getElementById('toast_icon');
+        const toastText = document.getElementById('toast_text');
+
+        /* ------------------------------------------------------------------
+           5. CANVAS RESIZING & PREPARATION
+           ------------------------------------------------------------------ */
+        function resizeCanvas() {
+            gameCanvas.width = window.innerWidth;
+            gameCanvas.height = window.innerHeight;
+            fxCanvas.width = window.innerWidth;
+            fxCanvas.height = window.innerHeight;
+        }
+        window.addEventListener('resize', resizeCanvas);
+        resizeCanvas();
+
+        /* ------------------------------------------------------------------
+           6. MEDIAPIPE HANDS SETUP
+           ------------------------------------------------------------------ */
+        const hands = new Hands({
+            locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${file}`
+        });
+
+        hands.setOptions({
+            maxNumHands: 1,
+            modelComplexity: 1,
+            minDetectionConfidence: 0.65,
+            minTrackingConfidence: 0.65
+        });
+
+        hands.onResults(onHandResults);
+
+        // Webcam Setup using MediaPipe Camera Utility
+        const camera = new Camera(videoElement, {
+            onFrame: async () => {
+                await hands.send({ image: videoElement });
+            },
+            width: 1280,
+            height: 720
+        });
+
+        camera.start().then(() => {
+            cameraStatus.innerHTML = `<i class="fa-solid fa-check text-green-400"></i> Kamera & Hand Tracking Bersedia!`;
+            btnStart.disabled = false;
+        }).catch(err => {
+            console.error(err);
+            cameraStatus.innerHTML = `<i class="fa-solid fa-triangle-exclamation text-red-400"></i> Sila benarkan akses webcam untuk bermain!`;
+        });
+
+        /* ------------------------------------------------------------------
+           7. HAND TRACKING & SLICE TRAIL PROCESSOR
+           ------------------------------------------------------------------ */
+        function onHandResults(results) {
+            // Clear main webcam preview canvas
+            gameCtx.save();
+            gameCtx.clearRect(0, 0, gameCanvas.width, gameCanvas.height);
+
+            // Draw Webcam Frame
+            gameCtx.drawImage(results.image, 0, 0, gameCanvas.width, gameCanvas.height);
+
+            // Process Hand Landmark (Index Finger Tip -> Landmark 8)
+            if (results.multiHandLandmarks && results.multiHandLandmarks.length > 0) {
+                const landmarks = results.multiHandLandmarks[0];
+                const indexTip = landmarks[8]; // Landmark Index Fingertip
+
+                // Convert normalized coordinates (0-1) to Screen Canvas Pixels
+                const x = indexTip.x * gameCanvas.width;
+                const y = indexTip.y * gameCanvas.height;
+
+                fingerPos = { x, y, active: true };
+
+                // Add to blade trail
+                bladeTrail.push({ x, y, time: Date.now() });
+
+                // Draw Landmark Joints (Subtle Ninja Glow Indicator)
+                gameCtx.fillStyle = '#facc15';
+                gameCtx.beginPath();
+                gameCtx.arc(x, y, 12, 0, 2 * Math.PI);
+                gameCtx.fill();
+                gameCtx.strokeStyle = '#ffffff';
+                gameCtx.lineWidth = 3;
+                gameCtx.stroke();
+            } else {
+                fingerPos.active = false;
+            }
+
+            gameCtx.restore();
+
+            // Check collision with answer targets if game running
+            if (isGameRunning && fingerPos.active) {
+                checkSliceCollisions(fingerPos.x, fingerPos.y);
+            }
+        }
+
+        /* ------------------------------------------------------------------
+           8. RENDER FX (Blade Slashes & Particles Animation Loop)
+           ------------------------------------------------------------------ */
+        function renderFX() {
+            fxCtx.clearRect(0, 0, fxCanvas.width, fxCanvas.height);
+
+            // 1. Render Ninja Blade Trail
+            const now = Date.now();
+            bladeTrail = bladeTrail.filter(p => now - p.time < 300); // Keep points for 300ms
+
+            if (bladeTrail.length > 1) {
+                for (let i = 1; i < bladeTrail.length; i++) {
+                    const p1 = bladeTrail[i - 1];
+                    const p2 = bladeTrail[i];
+                    const age = (now - p2.time) / 300; // 0 to 1
+                    const width = (1 - age) * 14;
+
+                    fxCtx.beginPath();
+                    fxCtx.moveTo(p1.x, p1.y);
+                    fxCtx.lineTo(p2.x, p2.y);
+                    fxCtx.strokeStyle = `rgba(250, 204, 21, ${1 - age})`; // Yellow Blade
+                    fxCtx.lineWidth = width;
+                    fxCtx.lineCap = 'round';
+                    fxCtx.shadowColor = '#f59e0b';
+                    fxCtx.shadowBlur = 15;
+                    fxCtx.stroke();
+                }
+            }
+
+            // 2. Render Burst Slash Particles
+            for (let i = particles.length - 1; i >= 0; i--) {
+                const p = particles[i];
+                p.x += p.vx;
+                p.y += p.vy;
+                p.alpha -= 0.02;
+
+                if (p.alpha <= 0) {
+                    particles.splice(i, 1);
+                    continue;
+                }
+
+                fxCtx.save();
+                fxCtx.globalAlpha = p.alpha;
+                fxCtx.fillStyle = p.color;
+                fxCtx.beginPath();
+                fxCtx.arc(p.x, p.y, p.size, 0, Math.PI * 2);
+                fxCtx.fill();
+                fxCtx.restore();
+            }
+
+            // Update Target Bubbles Floating Animation
+            if (isGameRunning) {
+                updateBubblePositions();
+            }
+
+            requestAnimationFrame(renderFX);
+        }
+
+        /* ------------------------------------------------------------------
+           9. GAME LOGIC & FLOW CONTROL
+           ------------------------------------------------------------------ */
+        btnStart.addEventListener('click', startGame);
+        btnRestart.addEventListener('click', startGame);
+
+        function startGame() {
+            sound.init();
+            score = 0;
+            lives = 3;
+            currentQuestionIdx = 0;
+            correctAttempts = 0;
+            isGameRunning = true;
+
+            // Update HUD UI
+            scoreVal.innerText = score;
+            updateLivesUI();
+
+            startScreen.classList.add('hidden');
+            gameoverScreen.classList.add('hidden');
+            hudLayer.classList.remove('hidden');
+            questionBanner.classList.remove('hidden');
+
+            loadQuestion(currentQuestionIdx);
+        }
+
+        function updateLivesUI() {
+            livesContainer.innerHTML = '';
+            for (let i = 0; i < 3; i++) {
+                if (i < lives) {
+                    livesContainer.innerHTML += `<i class="fa-solid fa-heart animate-bounce"></i>`;
+                } else {
+                    livesContainer.innerHTML += `<i class="fa-solid fa-heart opacity-20 text-slate-400"></i>`;
+                }
+            }
+        }
+
+        function loadQuestion(index) {
+            if (index >= QUESTIONS_BANK.length) {
+                endGame(true);
+                return;
+            }
+
+            const q = QUESTIONS_BANK[index];
+            questionNum.innerText = q.num;
+            questionIcon.innerText = q.icon;
+            questionText.innerText = q.question;
+
+            // Reset Timer for each question
+            resetTimer();
+
+            // Generate Floating Answer Bubbles
+            createAnswerBubbles(q);
+        }
+
+        function createAnswerBubbles(questionData) {
+            targetsLayer.innerHTML = '';
+            targetBubbles = [];
+
+            const colorSchemes = [
+                { bg: 'from-amber-500 to-red-600', border: 'border-yellow-300', text: 'text-white' },
+                { bg: 'from-cyan-500 to-blue-600', border: 'border-cyan-300', text: 'text-white' },
+                { bg: 'from-emerald-500 to-teal-700', border: 'border-emerald-300', text: 'text-white' }
+            ];
+
+            const padding = 120;
+            const availableWidth = window.innerWidth - (padding * 2);
+            const stepX = availableWidth / 3;
+
+            questionData.options.forEach((optText, i) => {
+                const bubble = document.createElement('div');
+                bubble.className = `bubble-target bg-gradient-to-br ${colorSchemes[i % colorSchemes.length].bg} ${colorSchemes[i % colorSchemes.length].border} border-4 ${colorSchemes[i % colorSchemes.length].text} font-ninja text-sm md:text-xl p-4 shadow-2xl`;
+                
+                // Set Size
+                const size = Math.min(Math.max(window.innerWidth * 0.15, 120), 170);
+                bubble.style.width = `${size}px`;
+                bubble.style.height = `${size}px`;
+
+                // Calculate Position (Distribute across screen)
+                const posX = padding + (stepX * i) + (stepX / 2);
+                const posY = window.innerHeight * 0.65;
+
+                bubble.style.left = `${posX}px`;
+                bubble.style.top = `${posY}px`;
+                bubble.innerText = optText;
+
+                targetsLayer.appendChild(bubble);
+
+                targetBubbles.push({
+                    element: bubble,
+                    text: optText,
+                    isCorrect: (i === questionData.correct),
+                    x: posX,
+                    y: posY,
+                    radius: size / 2,
+                    vx: (Math.random() - 0.5) * 1.5,
+                    vy: (Math.random() - 0.5) * 1.5,
+                    sliced: false
+                });
+            });
+        }
+
+        function updateBubblePositions() {
+            targetBubbles.forEach(b => {
+                if (b.sliced) return;
+
+                b.x += b.vx;
+                b.y += b.vy;
+
+                // Bounce from edges
+                const minY = window.innerHeight * 0.45;
+                const maxY = window.innerHeight * 0.85;
+                const minX = 80;
+                const maxX = window.innerWidth - 80;
+
+                if (b.x < minX || b.x > maxX) b.vx *= -1;
+                if (b.y < minY || b.y > maxY) b.vy *= -1;
+
+                b.element.style.left = `${b.x}px`;
+                b.element.style.top = `${b.y}px`;
+            });
+        }
+
+        /* ------------------------------------------------------------------
+           10. COLLISION & SLASH INTERACTION
+           ------------------------------------------------------------------ */
+        function checkSliceCollisions(fx, fy) {
+            targetBubbles.forEach(b => {
+                if (b.sliced) return;
+
+                // Distance formula between fingertip and bubble center
+                const dist = Math.hypot(fx - b.x, fy - b.y);
+
+                if (dist < b.radius) {
+                    // SLICED!
+                    b.sliced = true;
+                    b.element.style.transform = 'translate(-50%, -50%) scale(0)';
+                    b.element.style.opacity = '0';
+
+                    sound.playSlash();
+                    spawnParticles(b.x, b.y, b.isCorrect ? '#facc15' : '#ef4444');
+
+                    if (b.isCorrect) {
+                        handleCorrectAnswer();
+                    } else {
+                        handleWrongAnswer("Jawapan Kurang Tepat!");
+                    }
+                }
+            });
+        }
+
+        function handleCorrectAnswer() {
+            sound.playCorrect();
+            score += 100 + (timer * 2); // Bonus score for speed
+            scoreVal.innerText = score;
+            correctAttempts++;
+
+            showToast("TEBASAN TEPAT! +100", true);
+
+            clearInterval(timerInterval);
+            setTimeout(() => {
+                currentQuestionIdx++;
+                loadQuestion(currentQuestionIdx);
+            }, 1200);
+        }
+
+        function handleWrongAnswer(reason) {
+            sound.playWrong();
+            lives--;
+            updateLivesUI();
+
+            showToast(reason || "SALAH TEBAS!", false);
+
+            if (lives <= 0) {
+                clearInterval(timerInterval);
+                setTimeout(() => endGame(false), 1000);
+            }
+        }
+
+        /* ------------------------------------------------------------------
+           11. TIMER MANAGEMENT
+           ------------------------------------------------------------------ */
+        function resetTimer() {
+            clearInterval(timerInterval);
+            timer = 20; // 20 seconds per question
+            timerVal.innerText = `${timer}s`;
+
+            timerInterval = setInterval(() => {
+                timer--;
+                timerVal.innerText = `${timer}s`;
+
+                if (timer <= 0) {
+                    clearInterval(timerInterval);
+                    handleWrongAnswer("MASA TAMAT!");
+                }
+            }, 1000);
+        }
+
+        /* ------------------------------------------------------------------
+           12. PARTICLE BURST EFFECT
+           ------------------------------------------------------------------ */
+        function spawnParticles(x, y, color) {
+            for (let i = 0; i < 25; i++) {
+                const angle = Math.random() * Math.PI * 2;
+                const speed = Math.random() * 8 + 2;
+                particles.push({
+                    x: x,
+                    y: y,
+                    vx: Math.cos(angle) * speed,
+                    vy: Math.sin(angle) * speed,
+                    size: Math.random() * 6 + 4,
+                    color: color,
+                    alpha: 1
+                });
+            }
+        }
+
+        /* ------------------------------------------------------------------
+           13. TOAST FEEDBACK NOTIFICATION
+           ------------------------------------------------------------------ */
+        function showToast(text, isSuccess) {
+            toastText.innerText = text;
+            if (isSuccess) {
+                feedbackToast.className = "absolute bottom-12 left-1/2 -translate-x-1/2 z-50 glass-card px-8 py-4 rounded-2xl font-ninja text-2xl tracking-wide flex items-center space-x-3 transition-all duration-300 border-2 border-yellow-400 text-yellow-300 opacity-100 translate-y-0";
+                toastIcon.className = "fa-solid fa-circle-check text-yellow-400 text-3xl";
+            } else {
+                feedbackToast.className = "absolute bottom-12 left-1/2 -translate-x-1/2 z-50 glass-card px-8 py-4 rounded-2xl font-ninja text-2xl tracking-wide flex items-center space-x-3 transition-all duration-300 border-2 border-red-500 text-red-400 opacity-100 translate-y-0";
+                toastIcon.className = "fa-solid fa-triangle-exclamation text-red-500 text-3xl";
+            }
+
+            setTimeout(() => {
+                feedbackToast.classList.add('opacity-0', 'translate-y-8');
+            }, 1000);
+        }
+
+        /* ------------------------------------------------------------------
+           14. END GAME / RESULTS SUMMARY
+           ------------------------------------------------------------------ */
+        function endGame(isWin) {
+            isGameRunning = false;
+            clearInterval(timerInterval);
+
+            targetsLayer.innerHTML = '';
+            hudLayer.classList.add('hidden');
+            questionBanner.classList.add('hidden');
+            gameoverScreen.classList.remove('hidden');
+
+            const resultIcon = document.getElementById('result_icon');
+            const resultTitle = document.getElementById('result_title');
+            const resultDesc = document.getElementById('result_desc');
+
+            document.getElementById('final_completed').innerText = `${currentQuestionIdx}/10`;
+            const accuracy = Math.round((correctAttempts / 10) * 100);
+            document.getElementById('final_accuracy').innerText = `${accuracy}%`;
+            document.getElementById('final_score').innerText = score;
+
+            if (isWin || lives > 0) {
+                resultIcon.className = "w-24 h-24 bg-yellow-500/20 text-yellow-400 rounded-full flex items-center justify-center mb-4 text-5xl border-2 border-yellow-400 glow-gold";
+                resultIcon.innerHTML = `<i class="fa-solid fa-crown"></i>`;
+                resultTitle.innerText = "TAHNIAH, PAHLAWAN NINJA!";
+                resultTitle.className = "font-ninja text-3xl text-yellow-400 mb-1";
+                resultDesc.innerText = "Anda telah menguasai Tanda Baca Bahasa Melayu dengan cemerlang!";
+            } else {
+                resultIcon.className = "w-24 h-24 bg-red-500/20 text-red-500 rounded-full flex items-center justify-center mb-4 text-5xl border-2 border-red-500";
+                resultIcon.innerHTML = `<i class="fa-solid fa-heart-crack"></i>`;
+                resultTitle.innerText = "CUBA LAGI!";
+                resultTitle.className = "font-ninja text-3xl text-red-500 mb-1";
+                resultDesc.innerText = "Jangan menyerah! Latih jari telunjuk dan cuba lagi.";
+            }
+        }
+
+        /* ------------------------------------------------------------------
+           15. START ANIMATION LOOP ON LOAD
+           ------------------------------------------------------------------ */
+        window.onload = function () {
+            renderFX();
+        };
+    </script>
+</body>
+</html>
